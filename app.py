@@ -1,6 +1,7 @@
 import os
 import json
 import asyncio
+import threading
 import requests
 import pandas as pd
 from tqdm import tqdm
@@ -8,20 +9,19 @@ from zipfile import ZipFile, ZIP_DEFLATED
 from collections import defaultdict, Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
+from flask import Flask
 from telegram import Update, InputFile
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
     ContextTypes,
 )
-from flask import Flask
 
-# Get environment variables
+# Load environment variables
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 ACCESS_KEY = os.getenv("ACCESS_KEY")
 AUTHORIZED_USERS_FILE = "authorized_users.json"
 
-# Load or initialize authorized users
 if os.path.exists(AUTHORIZED_USERS_FILE):
     with open(AUTHORIZED_USERS_FILE, "r") as f:
         authorized_users = set(json.load(f))
@@ -95,7 +95,6 @@ async def analyze(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     continue
         return token_id, None
 
-    # Use ThreadPoolExecutor for concurrent fetch
     with ThreadPoolExecutor(max_workers=32) as executor:
         tasks = [executor.submit(fetch_metadata, i) for i in range(start, end + 1)]
         for fut in tqdm(as_completed(tasks), total=len(tasks)):
@@ -167,20 +166,14 @@ flask_app = Flask(__name__)
 def home():
     return "✅ NFT Bot is running!"
 
-# Async main entry
-async def main():
-    application = ApplicationBuilder().token(BOT_TOKEN).build()
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("auth", auth))
-    application.add_handler(CommandHandler("analyze", analyze))
-
-    await application.initialize()
-    await application.start()
-    await application.updater.start_polling()
-
-    await asyncio.Event().wait()
+def run_flask():
+    flask_app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
 
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    loop.create_task(main())
-    flask_app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
+    threading.Thread(target=run_flask, daemon=True).start()
+    asyncio.run(
+        ApplicationBuilder()
+        .token(BOT_TOKEN)
+        .build()
+        .run_polling()
+    )
