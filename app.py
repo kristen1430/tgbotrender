@@ -1,6 +1,5 @@
 import os
 import json
-import asyncio
 import threading
 import requests
 import pandas as pd
@@ -22,6 +21,7 @@ BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 ACCESS_KEY = os.getenv("ACCESS_KEY")
 AUTHORIZED_USERS_FILE = "authorized_users.json"
 
+# Load or initialize authorized users list
 if os.path.exists(AUTHORIZED_USERS_FILE):
     with open(AUTHORIZED_USERS_FILE, "r") as f:
         authorized_users = set(json.load(f))
@@ -159,7 +159,7 @@ async def analyze(update: Update, context: ContextTypes.DEFAULT_TYPE):
     os.remove(output_csv)
     os.remove(output_zip)
 
-# Flask app
+# Flask app for Render healthcheck
 flask_app = Flask(__name__)
 
 @flask_app.route("/")
@@ -170,10 +170,12 @@ def run_flask():
     flask_app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
 
 if __name__ == "__main__":
+    # Start Flask in a background thread
     threading.Thread(target=run_flask, daemon=True).start()
-    asyncio.run(
-        ApplicationBuilder()
-        .token(BOT_TOKEN)
-        .build()
-        .run_polling()
-    )
+
+    # Create and run Telegram bot
+    application = ApplicationBuilder().token(BOT_TOKEN).build()
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("auth", auth))
+    application.add_handler(CommandHandler("analyze", analyze))
+    application.run_polling()
